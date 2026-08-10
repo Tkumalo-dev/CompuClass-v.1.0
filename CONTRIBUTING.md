@@ -6,22 +6,33 @@
 personal branch (lindo_branch, kamo_branch, lutho_branch, thabo_branch, mila_branch)
         │  push/merge when ready to prove your work
         ▼
-   test_branch  ──────────────►  CI runs: lint, unit/component tests, expo-doctor
+   test_branch  ──────────────►  CI: lint, tests, expo-doctor
+        │                          EAS Build (Android, 'preview' profile)
         │  open a PR once CI is green
         ▼
       main  (protected — PR + passing CI required to merge)
         │  on merge
         ▼
-  EAS Build (Android + iOS) · EAS Update (OTA) · Web deploy (Vercel)
+  EAS Build (Android, 'production' profile) · Web deploy (Vercel)
 ```
 
 - Work on your own branch as usual.
 - Push to `test_branch` (or open a PR into it) to run the full CI check (lint, tests, `expo-doctor`) before you touch `main`.
 - Open a PR from `test_branch` into `main`. The same CI check runs as a required status check — a red check blocks the merge.
-- Merging into `main` automatically:
-  - triggers cloud builds for Android and iOS via **EAS Build**
-  - publishes an OTA JS update via **EAS Update** for testers already on an installed build
-  - exports and deploys the Expo web build via **Vercel**
+- Merging into `main` automatically triggers an Android **EAS Build** on the `production` profile and deploys the Expo web build via **Vercel**.
+
+### Platform / feature status
+
+| What | Status |
+|---|---|
+| Android builds | Active — EAS free tier, keystore managed by Expo |
+| iOS builds | **Not enabled** — requires a paid Apple Developer account ($99/yr). Available via the manual "Run workflow" inputs once that exists. |
+| EAS Update (OTA) | **Disabled** — needs `eas update:configure` first (installs `expo-updates`, adds `runtimeVersion`). See the comment at the top of `.github/workflows/eas-update.yml`. |
+
+> **Heads up:** the EAS free tier allows a limited number of builds per month.
+> Every push to `test_branch` or `main` consumes one. If you're iterating rapidly,
+> remove `test_branch` from the triggers in `.github/workflows/eas-build.yml` and
+> use the manual "Run workflow" button instead.
 
 ## Running checks locally
 

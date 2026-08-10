@@ -1,8 +1,20 @@
+# DISABLED until EAS Update is configured for this project.
+#
+# This workflow cannot succeed yet: the `expo-updates` package is not installed
+# and app.json has no `updates` / `runtimeVersion` config, so `eas update` has
+# nothing to publish to.
+#
+# To enable:
+#   1. cd CompuClass-v.1.0-main && eas update:configure
+#      (installs expo-updates, adds runtimeVersion + updates.url to app.json)
+#   2. Commit the resulting changes.
+#   3. Add `push: branches: [main]` back to the triggers below.
+#
+# Until then it only runs when triggered by hand, so it never reports red.
 name: EAS Update (OTA)
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 defaults:
   run:
