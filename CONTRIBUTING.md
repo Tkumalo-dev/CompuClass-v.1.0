@@ -1,5 +1,8 @@
 # Contributing to CompuClass
 
+> **Setting the project up for the first time?** See [DEPLOYMENT.md](DEPLOYMENT.md)
+> for the one-time admin steps: GitHub secrets, Vercel, Expo/EAS, and branch protection.
+
 ## Branch flow
 
 ```
