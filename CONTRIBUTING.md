@@ -13,13 +13,29 @@ personal branch (lindo_branch, kamo_branch, lutho_branch, thabo_branch, mila_bra
       main  (protected — PR + passing CI required to merge)
         │  on merge
         ▼
-  EAS Build (Android, 'production' profile) · Web deploy (Vercel)
+  EAS Build (Android, 'production' profile)
+        +
+  Vercel deploys the web build (its own Git integration, not a workflow)
 ```
 
 - Work on your own branch as usual.
 - Push to `test_branch` (or open a PR into it) to run the full CI check (lint, tests, `expo-doctor`) before you touch `main`.
 - Open a PR from `test_branch` into `main`. The same CI check runs as a required status check — a red check blocks the merge.
-- Merging into `main` automatically triggers an Android **EAS Build** on the `production` profile and deploys the Expo web build via **Vercel**.
+- Merging into `main` automatically triggers an Android **EAS Build** on the `production` profile.
+- **Vercel** deploys the web build via its own Git integration (no workflow involved) and publishes a preview URL for every pull request. Build settings live in `CompuClass-v.1.0-main/vercel.json`; the root directory and environment variables are set in the Vercel dashboard.
+
+## Environment variables
+
+The app reads `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, and
+`EXPO_PUBLIC_GEMINI_API_KEY`.
+
+**`.env` must live in `CompuClass-v.1.0-main/`** — the Expo project root, next to
+`app.json`. A `.env` at the repository root is *not* read, and the app will silently
+fall back to empty strings and fail to reach Supabase. It is gitignored, so each
+developer keeps their own copy.
+
+For deploys, the same three values are configured in the Vercel dashboard (web) and
+as GitHub secrets (EAS builds).
 
 ### Platform / feature status
 
