@@ -63,7 +63,7 @@ export default function LoginScreen({ onLogin, onSignUp, onForgotPassword }) {
           </TouchableOpacity>
 
           <View style={styles.signUpRow}>
-            <Text style={styles.signUpText}>Don't have an account? </Text>
+            <Text style={styles.signUpText}>Don&apos;t have an account? </Text>
             <TouchableOpacity onPress={onSignUp}>
               <Text style={styles.signUpLink}>Sign Up</Text>
             </TouchableOpacity>

@@ -189,7 +189,7 @@ export default function DashboardScreen({ navigation }) {
       </View>
 
       {/* Features grid */}
-      <Text style={styles.sectionTitle}>What You'll Learn</Text>
+      <Text style={styles.sectionTitle}>What You&apos;ll Learn</Text>
       <View style={styles.featuresGrid}>
         {features.map((f, i) => (
           <AnimatedCard
