@@ -31,6 +31,7 @@ import QuizDetailScreen from './screens/QuizDetailScreen';
 import StudentMaterialsScreen from './screens/StudentMaterialsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ChatbotScreen from './screens/ChatbotScreen';
+import LeaderboardScreen from './screens/LeaderboardScreen';
 import Sidebar from './components/Sidebar';
 
 import { authService } from './services/authService';
@@ -285,6 +286,7 @@ function AppContent() {
               <Tab.Screen name="Windows 11" component={Windows11SimulatorScreen} options={{ tabBarButton: () => null, headerShown: false }} />
               <Tab.Screen name="Quiz" component={QuizScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Troubleshoot" component={TroubleshootingScreen} options={{ tabBarButton: () => null }} />
+              <Tab.Screen name="Leaderboard" component={LeaderboardScreen} options={{ tabBarButton: () => null, headerShown: false }} />
               <Tab.Screen name="Materials" component={StudentMaterialsScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Chatbot" component={ChatbotScreen} options={{ tabBarButton: () => null, headerShown: false }} />

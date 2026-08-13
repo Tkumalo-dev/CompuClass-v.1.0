@@ -131,7 +131,12 @@ export default function QuizCreationScreen({ navigation, route }) {
 
       // Generate AI quiz based on file content
       const aiQuiz = await lecturerService.generateAIQuiz(selectedFile, quizTitle, questionCount);
-      setQuestions(aiQuiz.questions);
+      const questionsWithDefaults = aiQuiz.questions.map((q) => ({
+        ...q,
+        difficulty: q.difficulty || 'medium',
+        timeLimitSeconds: q.timeLimitSeconds || null,
+      }));
+      setQuestions(questionsWithDefaults);
       
       Alert.alert('Success', `Generated ${aiQuiz.questions.length} questions from your document!`);
       setShowAIGenerate(false);
@@ -150,7 +155,9 @@ export default function QuizCreationScreen({ navigation, route }) {
       question: '',
       options: ['', '', '', ''],
       correctAnswer: 0,
-      type: 'multiple-choice'
+      type: 'multiple-choice',
+      difficulty: 'medium',
+      timeLimitSeconds: null
     };
     setQuestions([...questions, newQuestion]);
   };
@@ -282,6 +289,57 @@ export default function QuizCreationScreen({ navigation, route }) {
           />
         </View>
       ))}
+
+      <View style={styles.gamificationRow}>
+        <Text style={[styles.gamificationLabel, { color: theme.textSecondary }]}>Difficulty</Text>
+        <View style={styles.chipRow}>
+          {['easy', 'medium', 'hard'].map((level) => (
+            <TouchableOpacity
+              key={level}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: question.difficulty === level ? theme.primary : theme.borderLight,
+                  borderColor: theme.border,
+                },
+              ]}
+              onPress={() => updateQuestion(index, 'difficulty', level)}
+            >
+              <Text style={[styles.chipText, { color: question.difficulty === level ? '#fff' : theme.text }]}>
+                {level.charAt(0).toUpperCase() + level.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.gamificationRow}>
+        <Text style={[styles.gamificationLabel, { color: theme.textSecondary }]}>Time limit</Text>
+        <View style={styles.chipRow}>
+          {[
+            { label: 'None', value: null },
+            { label: '15s', value: 15 },
+            { label: '30s', value: 30 },
+            { label: '60s', value: 60 },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.label}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: question.timeLimitSeconds === opt.value ? theme.primary : theme.borderLight,
+                  borderColor: theme.border,
+                },
+              ]}
+              onPress={() => updateQuestion(index, 'timeLimitSeconds', opt.value)}
+            >
+              <Text style={[styles.chipText, { color: question.timeLimitSeconds === opt.value ? '#fff' : theme.text }]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
     </View>
   );
 
@@ -757,6 +815,19 @@ const styles = StyleSheet.create({
   },
   countButtonText: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  gamificationRow: { marginTop: 12 },
+  gamificationLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 12,
     fontWeight: '600',
   },
 });

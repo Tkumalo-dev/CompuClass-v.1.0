@@ -138,13 +138,40 @@ export const lecturerService = {
         order_index: idx
       }));
 
-      const { error: qError } = await supabase
+      const { data: insertedQuestions, error: qError } = await supabase
         .from('quiz_questions')
-        .insert(questionInserts);
+        .insert(questionInserts)
+        .select();
       if (qError) {
         console.error('❌ Insert quiz questions error:', qError.message);
         throw qError;
       }
+
+      // Attach per-question timer/difficulty where the lecturer customized
+      // them (defaults are no time limit + medium difficulty, so most
+      // questions skip this entirely). Match by order_index rather than
+      // array position — insert return order isn't guaranteed to match
+      // the input array.
+      const byOrderIndex = {};
+      (insertedQuestions || []).forEach((row) => { byOrderIndex[row.order_index] = row; });
+
+      const settingsCalls = questions
+        .map((q, idx) => ({ q, inserted: byOrderIndex[idx] }))
+        .filter(({ q, inserted }) => inserted && (q.timeLimitSeconds || (q.difficulty && q.difficulty !== 'medium')))
+        .map(({ q, inserted }) =>
+          supabase.rpc('set_question_gamification_settings', {
+            p_question_id: inserted.id,
+            p_time_limit_seconds: q.timeLimitSeconds || null,
+            p_difficulty: q.difficulty || 'medium',
+          })
+        );
+
+      if (settingsCalls.length > 0) {
+        const results = await Promise.all(settingsCalls);
+        const failed = results.find((r) => r.error);
+        if (failed) console.error('⚠️ Some question settings failed to save:', failed.error.message);
+      }
+
       console.log('✅ Quiz created:', title, 'with', questions.length, 'questions');
       return data;
     } catch (error) {

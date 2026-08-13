@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import { authService } from '../services/authService';
 const BLUE = '#2563EB'; const YELLOW = '#FACC15'; const RED = '#EF4444';
 const GREEN = '#22C55E'; const WHITE = '#FFFFFF'; const BG = '#F3F4F6';
 const TEXT = '#111827'; const MUTED = '#4B5563'; const BORDER = '#E5E7EB';
+const PURPLE = '#8B5CF6';
 
 export default function QuizScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -20,11 +21,51 @@ export default function QuizScreen({ route, navigation }) {
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [score, setScore] = useState(0);
-  const [quizCompleted, setQuizCompleted] = useState(false);
   const [answers, setAnswers] = useState([]);
+  const [quizCompleted, setQuizCompleted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(null);
+
+  // Refs so the timer's interval callback always sees fresh values
+  // without having to restart the interval every render.
+  const timerRef = useRef(null);
+  const selectedAnswerRef = useRef(null);
+  const answersRef = useRef([]);
+  const questionsRef = useRef([]);
+  const currentIndexRef = useRef(0);
+
+  useEffect(() => { selectedAnswerRef.current = selectedAnswer; }, [selectedAnswer]);
+  useEffect(() => { answersRef.current = answers; }, [answers]);
+  useEffect(() => { questionsRef.current = questions; }, [questions]);
+  useEffect(() => { currentIndexRef.current = currentQuestion; }, [currentQuestion]);
 
   useEffect(() => { quizId ? loadQuiz() : loadAvailableQuizzes(); }, [quizId]);
+
+  // Starts (or restarts) the countdown whenever the active question changes.
+  // Untimed questions (time_limit_seconds is null) just skip the timer.
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    const q = questions[currentQuestion];
+    if (!q || quizCompleted) return;
+    if (!q.time_limit_seconds) { setTimeLeft(null); return; }
+
+    setTimeLeft(q.time_limit_seconds);
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          setTimeout(() => advanceQuestion(selectedAnswerRef.current, 0), 0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestion, questions.length]);
 
   const loadAvailableQuizzes = async () => {
     try {
@@ -45,38 +86,80 @@ export default function QuizScreen({ route, navigation }) {
     try {
       const { data: quizData, error: quizError } = await supabase.from('quizzes').select('*').eq('id', quizId).single();
       if (quizError) throw quizError;
-      const { data: questionsData, error: questionsError } = await supabase.from('quiz_questions').select('*').eq('quiz_id', quizId).order('order_index');
+
+      // Questions come through a security-definer RPC — it never returns
+      // correct_answer, so there's nothing for the client to leak or fake.
+      const { data: questionsData, error: questionsError } = await supabase
+        .rpc('get_quiz_questions_for_attempt', { p_quiz_id: quizId });
       if (questionsError) throw questionsError;
-      setQuiz(quizData); setQuestions(questionsData);
-    } catch { Alert.alert('Error', 'Failed to load quiz'); navigation.goBack(); }
-    finally { setLoading(false); }
+
+      setQuiz(quizData);
+      setQuestions((questionsData || []).slice().sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)));
+    } catch {
+      Alert.alert('Error', 'Failed to load quiz');
+      navigation.goBack();
+    } finally { setLoading(false); }
   };
 
-  const handleNextQuestion = () => {
-    if (selectedAnswer === null) { Alert.alert('Please select an answer'); return; }
-    const isCorrect = selectedAnswer === questions[currentQuestion].correct_answer;
-    const newAnswers = [...answers, { questionId: questions[currentQuestion].id, selected: selectedAnswer, correct: questions[currentQuestion].correct_answer, isCorrect }];
+  const advanceQuestion = useCallback((finalAnswer, finalTimeLeft) => {
+    const qs = questionsRef.current;
+    const idx = currentIndexRef.current;
+    const currentQ = qs[idx];
+    if (!currentQ) return;
+
+    const newAnswers = [...answersRef.current, {
+      question_id: currentQ.id,
+      selected_answer: finalAnswer,
+      time_remaining_seconds: currentQ.time_limit_seconds ? finalTimeLeft : null,
+    }];
     setAnswers(newAnswers);
-    if (isCorrect) setScore(score + 1);
-    if (currentQuestion + 1 < questions.length) { setCurrentQuestion(currentQuestion + 1); setSelectedAnswer(null); }
-    else submitQuizAttempt(score + (isCorrect ? 1 : 0));
+
+    if (idx + 1 < qs.length) {
+      setCurrentQuestion(idx + 1);
+      setSelectedAnswer(null);
+    } else {
+      submitQuiz(newAnswers);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleNextPress = () => {
+    if (selectedAnswer === null) { Alert.alert('Please select an answer'); return; }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (timerRef.current) clearInterval(timerRef.current);
+    advanceQuestion(selectedAnswer, timeLeft);
   };
 
-  const submitQuizAttempt = async (finalScore) => {
+  const submitQuiz = async (finalAnswers) => {
+    setSubmitting(true);
     try {
-      const user = await authService.getCurrentUser();
-      const percentage = Math.round((finalScore / questions.length) * 100);
-      await supabase.from('quiz_attempts').insert({ user_id: user.id, quiz_id: quizId, score: percentage });
-    } catch {}
-    setQuizCompleted(true);
+      const { data, error } = await supabase.rpc('submit_quiz_attempt', {
+        p_quiz_id: quizId,
+        p_answers: finalAnswers,
+      });
+      if (error) throw error;
+      setResult(data);
+      setQuizCompleted(true);
+      if (data?.leveled_up) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Error', 'Could not submit your quiz. Check your connection and try again.');
+    } finally { setSubmitting(false); }
   };
 
-  const resetQuiz = () => { setCurrentQuestion(0); setSelectedAnswer(null); setScore(0); setQuizCompleted(false); setAnswers([]); };
-
-  const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
-  const scoreColor = pct >= 80 ? GREEN : pct >= 60 ? YELLOW : RED;
+  const resetQuiz = () => {
+    setCurrentQuestion(0); setSelectedAnswer(null); setAnswers([]);
+    setQuizCompleted(false); setResult(null); setTimeLeft(null);
+  };
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={BLUE} /><Text style={styles.loadingText}>Loading...</Text></View>;
+
+  if (submitting) return (
+    <View style={styles.centered}>
+      <ActivityIndicator size="large" color={BLUE} />
+      <Text style={styles.loadingText}>Grading your quiz...</Text>
+    </View>
+  );
 
   if (!quizId) return (
     <View style={styles.container}>
@@ -108,42 +191,82 @@ export default function QuizScreen({ route, navigation }) {
     </View>
   );
 
-  if (quizCompleted) return (
-    <ScrollView style={styles.container}>
-      <LinearGradient colors={[scoreColor, scoreColor + 'CC']} style={styles.resultBanner}>
-        <Ionicons name="trophy" size={60} color={WHITE} />
-        <Text style={styles.resultTitle}>Quiz Completed! 🎉</Text>
-        <Text style={styles.resultQuizTitle}>{quiz.title}</Text>
-        <Text style={styles.resultScore}>{pct}%</Text>
-        <Text style={styles.resultFraction}>{score} / {questions.length} correct</Text>
-        <View style={styles.resultBtns}>
-          <TouchableOpacity style={styles.resultBtn} onPress={resetQuiz} activeOpacity={0.85}><Ionicons name="refresh" size={16} color={scoreColor} /><Text style={[styles.resultBtnText, { color: scoreColor }]}>Try Again</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.resultBtn, { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 0 }]} onPress={() => navigation.goBack()} activeOpacity={0.85}><Ionicons name="home" size={16} color={WHITE} /><Text style={[styles.resultBtnText, { color: WHITE }]}>Home</Text></TouchableOpacity>
-        </View>
-      </LinearGradient>
-      <View style={styles.reviewSection}>
-        <Text style={styles.reviewTitle}>Review Answers</Text>
-        {questions.map((question, index) => (
-          <View key={question.id} style={styles.reviewCard}>
-            <Text style={styles.reviewQ}>{index + 1}. {question.question}</Text>
-            <Text style={[styles.reviewA, { color: answers[index]?.isCorrect ? GREEN : RED }]}>Your answer: {answers[index]?.selected} {answers[index]?.isCorrect ? '✓' : '✗'}</Text>
-            {!answers[index]?.isCorrect && <Text style={styles.correctA}>✓ Correct: {question.correct_answer}</Text>}
+  if (quizCompleted && result) {
+    const scoreColor = result.passed ? GREEN : (result.score >= 60 ? YELLOW : RED);
+    return (
+      <ScrollView style={styles.container}>
+        <LinearGradient colors={[scoreColor, scoreColor + 'CC']} style={styles.resultBanner}>
+          <Ionicons name={result.passed ? 'trophy' : 'ribbon'} size={60} color={WHITE} />
+          <Text style={styles.resultTitle}>Quiz Completed! 🎉</Text>
+          <Text style={styles.resultQuizTitle}>{quiz.title}</Text>
+          <Text style={styles.resultScore}>{result.score}%</Text>
+          <Text style={styles.resultFraction}>{result.correct_count} / {result.total_questions} correct</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statPill}><Ionicons name="flash" size={14} color={WHITE} /><Text style={styles.statPillText}>+{result.xp_earned} XP</Text></View>
+            <View style={styles.statPill}><Ionicons name="trending-up" size={14} color={WHITE} /><Text style={styles.statPillText}>Best combo x{result.max_combo}</Text></View>
+            <View style={styles.statPill}><Ionicons name="flame" size={14} color={WHITE} /><Text style={styles.statPillText}>{result.current_streak} day streak</Text></View>
           </View>
-        ))}
-      </View>
-    </ScrollView>
-  );
+
+          <View style={styles.resultBtns}>
+            <TouchableOpacity style={styles.resultBtn} onPress={resetQuiz} activeOpacity={0.85}><Ionicons name="refresh" size={16} color={scoreColor} /><Text style={[styles.resultBtnText, { color: scoreColor }]}>Try Again</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.resultBtn, { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 0 }]} onPress={() => navigation.goBack()} activeOpacity={0.85}><Ionicons name="home" size={16} color={WHITE} /><Text style={[styles.resultBtnText, { color: WHITE }]}>Home</Text></TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        {result.leveled_up && (
+          <View style={styles.levelUpBanner}>
+            <Ionicons name="rocket" size={26} color={PURPLE} />
+            <Text style={styles.levelUpText}>Level Up! You're now Level {result.new_level} 🎊</Text>
+          </View>
+        )}
+
+        {result.new_badges?.length > 0 && (
+          <View style={styles.badgesSection}>
+            <Text style={styles.reviewTitle}>New Badges Earned</Text>
+            <View style={styles.badgeRow}>
+              {result.new_badges.map((b) => (
+                <View key={b.code} style={styles.badgeChip}>
+                  <Ionicons name={b.icon || 'trophy'} size={22} color={YELLOW} />
+                  <Text style={styles.badgeChipText}>{b.name}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        <View style={styles.reviewSection}>
+          <Text style={styles.reviewTitle}>Review Answers</Text>
+          {result.review.map((r, index) => (
+            <View key={r.question_id} style={styles.reviewCard}>
+              <Text style={styles.reviewQ}>{index + 1}. {r.question}</Text>
+              <Text style={[styles.reviewA, { color: r.is_correct ? GREEN : RED }]}>
+                Your answer: {r.selected_answer ?? '(no answer)'} {r.is_correct ? '✓' : '✗'}
+              </Text>
+              {!r.is_correct && <Text style={styles.correctA}>✓ Correct: {r.correct_answer}</Text>}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
 
   const currentQ = questions[currentQuestion];
   if (!currentQ) return null;
   const options = typeof currentQ.options === 'string' ? JSON.parse(currentQ.options) : currentQ.options;
+  const timerColor = timeLeft === null ? MUTED : timeLeft <= 5 ? RED : timeLeft <= 10 ? YELLOW : GREEN;
 
   return (
     <View style={styles.container}>
       <LinearGradient colors={[BLUE, '#1D4ED8']} style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}><Ionicons name="arrow-back" size={20} color={WHITE} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Question {currentQuestion + 1} of {questions.length}</Text>
-        <View style={styles.scorePill}><Text style={styles.scorePillText}>Score: {score}</Text></View>
+        {timeLeft !== null && (
+          <View style={[styles.timerPill, { backgroundColor: timerColor }]}>
+            <Ionicons name="time" size={14} color={WHITE} />
+            <Text style={styles.timerPillText}>{timeLeft}s</Text>
+          </View>
+        )}
       </LinearGradient>
       <View style={styles.progressBar}><View style={[styles.progressFill, { width: `${((currentQuestion + 1) / questions.length) * 100}%` }]} /></View>
       <ScrollView style={styles.questionScroll}>
@@ -159,7 +282,7 @@ export default function QuizScreen({ route, navigation }) {
           ))}
         </View>
       </ScrollView>
-      <TouchableOpacity style={[styles.nextBtn, selectedAnswer === null && styles.nextBtnDisabled]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleNextQuestion(); }} disabled={selectedAnswer === null} activeOpacity={0.85}>
+      <TouchableOpacity style={[styles.nextBtn, selectedAnswer === null && styles.nextBtnDisabled]} onPress={handleNextPress} disabled={selectedAnswer === null} activeOpacity={0.85}>
         <Text style={styles.nextBtnText}>{currentQuestion + 1 === questions.length ? 'Finish Quiz 🎉' : 'Next Question'}</Text>
         <Ionicons name="arrow-forward" size={18} color={WHITE} />
       </TouchableOpacity>
@@ -174,8 +297,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingBottom: 16, paddingHorizontal: 16, gap: 12 },
   backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: WHITE },
-  scorePill: { backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
-  scorePillText: { fontSize: 13, fontWeight: '700', color: WHITE },
+  timerPill: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, gap: 4 },
+  timerPillText: { fontSize: 13, fontWeight: '800', color: WHITE },
   progressBar: { height: 6, backgroundColor: BORDER },
   progressFill: { height: '100%', backgroundColor: BLUE },
   listScroll: { flex: 1, padding: 16 },
@@ -203,10 +326,19 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 26, fontWeight: '900', color: WHITE, marginTop: 16 },
   resultQuizTitle: { fontSize: 14, color: 'rgba(255,255,255,0.85)', marginBottom: 12 },
   resultScore: { fontSize: 56, fontWeight: '900', color: WHITE, marginBottom: 4 },
-  resultFraction: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginBottom: 24 },
+  resultFraction: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginBottom: 20 },
+  statsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 24 },
+  statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  statPillText: { color: WHITE, fontSize: 12, fontWeight: '800' },
   resultBtns: { flexDirection: 'row', gap: 12 },
   resultBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, gap: 6 },
   resultBtnText: { fontWeight: '700', fontSize: 14 },
+  levelUpBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: WHITE, marginHorizontal: 20, marginTop: 16, padding: 16, borderRadius: 14, borderWidth: 2, borderColor: PURPLE + '40' },
+  levelUpText: { fontSize: 14, fontWeight: '800', color: PURPLE, flex: 1 },
+  badgesSection: { padding: 20, paddingBottom: 0 },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  badgeChip: { alignItems: 'center', backgroundColor: WHITE, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, gap: 6, width: 96, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  badgeChipText: { fontSize: 11, fontWeight: '700', color: TEXT, textAlign: 'center' },
   reviewSection: { padding: 20, paddingBottom: 40 },
   reviewTitle: { fontSize: 18, fontWeight: '800', color: TEXT, marginBottom: 16 },
   reviewCard: { backgroundColor: WHITE, borderRadius: 14, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },

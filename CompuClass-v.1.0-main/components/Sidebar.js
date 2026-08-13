@@ -16,6 +16,7 @@ const menuItems = [
   { icon: 'desktop',     title: 'PC Lab',             screen: 'PC Lab',       color: GREEN  },
   { icon: 'laptop',      title: 'Windows 11',         screen: 'Windows 11',   color: BLUE   },
   { icon: 'help-circle', title: 'Quiz',               screen: 'Quiz',         color: YELLOW },
+  { icon: 'podium',      title: 'Leaderboard',        screen: 'Leaderboard',  color: PURPLE },
   { icon: 'bug',         title: 'Troubleshooting',    screen: 'Troubleshoot', color: RED    },
   { icon: 'settings',    title: 'Settings',           screen: 'Settings',     color: MUTED  },
 ];
