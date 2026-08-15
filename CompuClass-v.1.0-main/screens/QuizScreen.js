@@ -235,18 +235,20 @@ export default function QuizScreen({ route, navigation }) {
           </View>
         )}
 
-        <View style={styles.reviewSection}>
-          <Text style={styles.reviewTitle}>Review Answers</Text>
-          {result.review.map((r, index) => (
-            <View key={r.question_id} style={styles.reviewCard}>
-              <Text style={styles.reviewQ}>{index + 1}. {r.question}</Text>
-              <Text style={[styles.reviewA, { color: r.is_correct ? GREEN : RED }]}>
-                Your answer: {r.selected_answer ?? '(no answer)'} {r.is_correct ? '✓' : '✗'}
-              </Text>
-              {!r.is_correct && <Text style={styles.correctA}>✓ Correct: {r.correct_answer}</Text>}
-            </View>
-          ))}
-        </View>
+        {result.review?.length > 0 && (
+          <View style={styles.reviewSection}>
+            <Text style={styles.reviewTitle}>Review Answers</Text>
+            {result.review.map((r, index) => (
+              <View key={r.question_id} style={styles.reviewCard}>
+                <Text style={styles.reviewQ}>{index + 1}. {r.question}</Text>
+                <Text style={[styles.reviewA, { color: r.is_correct ? GREEN : RED }]}>
+                  Your answer: {r.selected_answer ?? '(no answer)'} {r.is_correct ? '✓' : '✗'}
+                </Text>
+                {!r.is_correct && <Text style={styles.correctA}>✓ Correct: {r.correct_answer}</Text>}
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     );
   }
