@@ -217,7 +217,7 @@ export default function QuizScreen({ route, navigation }) {
         {result.leveled_up && (
           <View style={styles.levelUpBanner}>
             <Ionicons name="rocket" size={26} color={PURPLE} />
-            <Text style={styles.levelUpText}>Level Up! You're now Level {result.new_level} 🎊</Text>
+            <Text style={styles.levelUpText}>Level Up! You&apos;re now Level {result.new_level} 🎊</Text>
           </View>
         )}
 

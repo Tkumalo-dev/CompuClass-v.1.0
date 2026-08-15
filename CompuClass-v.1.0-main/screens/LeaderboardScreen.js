@@ -201,7 +201,7 @@ export default function LeaderboardScreen({ navigation }) {
         {scope === "class" && classes.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="school-outline" size={56} color={BORDER} />
-            <Text style={styles.emptyText}>You're not in a class yet</Text>
+            <Text style={styles.emptyText}>You&apos;re not in a class yet</Text>
             <Text style={styles.emptySubtext}>
               Ask your lecturer to add you to see a class leaderboard
             </Text>
