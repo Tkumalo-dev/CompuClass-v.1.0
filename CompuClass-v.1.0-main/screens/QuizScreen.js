@@ -193,6 +193,19 @@ export default function QuizScreen({ route, navigation }) {
 
   if (quizCompleted && result) {
     const scoreColor = result.passed ? GREEN : (result.score >= 60 ? YELLOW : RED);
+
+    // A quiz pays out its best-ever attempt, once. xp_earned is what actually
+    // landed on the total; xp_attempt_value is what this run was worth alone.
+    // Only say anything if they've taken this quiz before — first-timers just
+    // see their XP with no explanation needed.
+    const isRetake = (result.xp_previous_best ?? 0) > 0;
+    let retryNote = null;
+    if (isRetake && result.is_personal_best) {
+      retryNote = `New personal best — worth ${result.xp_attempt_value} XP, up from ${result.xp_previous_best}`;
+    } else if (isRetake) {
+      retryNote = `Worth ${result.xp_attempt_value} XP — your best on this quiz is still ${result.xp_previous_best}`;
+    }
+
     return (
       <ScrollView style={styles.container}>
         <LinearGradient colors={[scoreColor, scoreColor + 'CC']} style={styles.resultBanner}>
@@ -207,6 +220,10 @@ export default function QuizScreen({ route, navigation }) {
             <View style={styles.statPill}><Ionicons name="trending-up" size={14} color={WHITE} /><Text style={styles.statPillText}>Best combo x{result.max_combo}</Text></View>
             <View style={styles.statPill}><Ionicons name="flame" size={14} color={WHITE} /><Text style={styles.statPillText}>{result.current_streak} day streak</Text></View>
           </View>
+
+          {/* A quiz is worth its best attempt, once — explain a retake that
+              earned nothing, and celebrate one that beat the old best. */}
+          {retryNote && <Text style={styles.retryNote}>{retryNote}</Text>}
 
           <View style={styles.resultBtns}>
             <TouchableOpacity style={styles.resultBtn} onPress={resetQuiz} activeOpacity={0.85}><Ionicons name="refresh" size={16} color={scoreColor} /><Text style={[styles.resultBtnText, { color: scoreColor }]}>Try Again</Text></TouchableOpacity>
@@ -332,6 +349,7 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 24 },
   statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
   statPillText: { color: WHITE, fontSize: 12, fontWeight: '800' },
+  retryNote: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600', textAlign: 'center', marginBottom: 20, paddingHorizontal: 24 },
   resultBtns: { flexDirection: 'row', gap: 12 },
   resultBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, gap: 6 },
   resultBtnText: { fontWeight: '700', fontSize: 14 },

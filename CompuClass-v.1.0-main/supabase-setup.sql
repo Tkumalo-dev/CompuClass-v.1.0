@@ -589,8 +589,15 @@ $function$;
 --   * +5 speed bonus if answered with more than half the time limit left
 --   * +20 for completing the quiz, +50 more for scoring 90% or above
 --
+-- Retries: a quiz is worth its best-ever attempt, once. Each submission is
+-- valued on its own merits, then only the improvement over the user's previous
+-- best on that quiz is added to their total. Beating your best pays the
+-- difference; matching or falling short pays nothing. Without this a student
+-- could replay one quiz indefinitely and top the leaderboard by grinding.
+--
 -- Streaks: same-day replays don't change the streak, a next-day attempt
--- extends it, any longer gap resets it to 1.
+-- extends it, any longer gap resets it to 1. A zero-XP retake still counts as
+-- activity for streak purposes — the student did show up.
 CREATE OR REPLACE FUNCTION public.submit_quiz_attempt(p_quiz_id uuid, p_answers jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -627,6 +634,8 @@ DECLARE
   v_inserted_badge_id UUID;
   v_review JSONB := '[]'::JSONB;
   v_quiz_count INTEGER;
+  v_previous_best INTEGER;
+  v_xp_awarded INTEGER;
 BEGIN
   IF v_user_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
 
@@ -685,12 +694,26 @@ BEGIN
   v_xp_earned := v_xp_earned + 20;
   IF v_percentage >= 90 THEN v_xp_earned := v_xp_earned + 50; END IF;
 
+  -- v_xp_earned is now what THIS attempt is worth on its own merits.
+  --
+  -- A quiz is worth its best-ever attempt, once. Look up the high-water mark
+  -- for this user/quiz pair and award only the improvement on it, so replaying
+  -- a quiz cannot farm XP while genuinely doing better still pays.
+  -- This must run BEFORE the insert below, or it would count the current row.
+  SELECT COALESCE(MAX(qas.xp_earned), 0) INTO v_previous_best
+  FROM public.quiz_attempts qa
+  JOIN gamification.quiz_attempt_stats qas ON qas.attempt_id = qa.id
+  WHERE qa.user_id = v_user_id AND qa.quiz_id = p_quiz_id;
+
+  v_xp_awarded := GREATEST(0, v_xp_earned - v_previous_best);
+
   -- Base attempt row — same shape as before, no new columns
   INSERT INTO public.quiz_attempts (user_id, quiz_id, score)
   VALUES (v_user_id, p_quiz_id, v_percentage)
   RETURNING id INTO v_attempt_id;
 
-  -- Extended stats live in the new schema
+  -- Extended stats live in the new schema. Store the attempt's own value, not
+  -- the awarded amount — that is what makes the high-water mark work.
   INSERT INTO gamification.quiz_attempt_stats (attempt_id, xp_earned, max_combo, correct_count, total_questions)
   VALUES (v_attempt_id, v_xp_earned, v_max_combo, v_correct_count, v_total);
 
@@ -702,7 +725,7 @@ BEGIN
     INTO v_old_xp, v_old_level, v_last_activity, v_new_streak, v_new_longest
     FROM gamification.user_stats WHERE user_id = v_user_id;
 
-  v_new_xp := v_old_xp + v_xp_earned;
+  v_new_xp := v_old_xp + v_xp_awarded;
   v_new_level := public.xp_to_level(v_new_xp);
 
   IF v_last_activity = v_today THEN
@@ -720,7 +743,10 @@ BEGIN
       last_activity_date = v_today, updated_at = NOW()
   WHERE user_id = v_user_id;
 
-  SELECT COUNT(*) INTO v_quiz_count FROM public.quiz_attempts WHERE user_id = v_user_id;
+  -- DISTINCT: badges count quizzes completed, not attempts made, so retaking
+  -- one quiz ten times no longer unlocks quiz_master.
+  SELECT COUNT(DISTINCT quiz_id) INTO v_quiz_count
+  FROM public.quiz_attempts WHERE user_id = v_user_id;
 
   FOR v_badge IN
     SELECT * FROM gamification.badges WHERE code IN (
@@ -749,7 +775,13 @@ BEGIN
     'passed', v_passed,
     'correct_count', v_correct_count,
     'total_questions', v_total,
-    'xp_earned', v_xp_earned,
+    -- xp_earned is what actually landed on the user's total. When a retake
+    -- fails to beat the previous best that is 0, and attempt_value / previous
+    -- best let the UI explain why.
+    'xp_earned', v_xp_awarded,
+    'xp_attempt_value', v_xp_earned,
+    'xp_previous_best', v_previous_best,
+    'is_personal_best', v_xp_earned > v_previous_best,
     'new_xp', v_new_xp,
     'old_level', v_old_level,
     'new_level', v_new_level,

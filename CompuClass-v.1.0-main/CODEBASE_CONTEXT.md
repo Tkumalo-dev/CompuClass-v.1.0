@@ -221,6 +221,16 @@ consecutive correct, capped at 2.0×), +5 if answered with over half the time
 limit remaining, +20 for finishing, +50 more at 90%+. Level N requires
 `100 * N * (N+1) / 2` total XP (`xp_to_level`).
 
+**Retry policy:** a quiz is worth its best-ever attempt, *once*. Each submission
+is valued on its own, then only the improvement over the user's previous best on
+that quiz is added to their total — beating your best pays the difference,
+matching or falling short pays nothing. `quiz_attempt_stats.xp_earned` stores
+the attempt's own value (not the awarded amount), which is what makes the
+high-water mark work. `submit_quiz_attempt` returns `xp_earned` (what landed),
+`xp_attempt_value`, `xp_previous_best` and `is_personal_best` so the UI can
+explain a zero-XP retake. Badge counts use `COUNT(DISTINCT quiz_id)`, so
+retaking one quiz ten times does not unlock `quiz_master`.
+
 | RPC | Called from | Purpose |
 |---|---|---|
 | `submit_quiz_attempt(p_quiz_id, p_answers)` | `QuizScreen` | Grades the attempt server-side; returns score, passed, correct_count, total_questions, xp_earned, max_combo, current_streak, leveled_up, new_level, new_badges[], review[] |
