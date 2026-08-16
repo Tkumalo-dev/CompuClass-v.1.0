@@ -192,12 +192,34 @@ SQLite-backed offline cache (singleton `OfflineService` class):
 | `quiz_attempts` | `id`, `user_id`, `quiz_id`, `score` (percentage), `completed_at` |
 | `material_views` | `id`, `user_id`, `document_id`, `created_at` |
 
-### Gamification RPCs — ⚠️ live in Supabase, not in `supabase-setup.sql`
+### Gamification (`gamification` schema)
 
-The gamification feature depends on six Postgres functions that exist in the
-Supabase project but are **not captured in this repo**. `supabase-setup.sql`
-still reflects only the original schema, so the database cannot currently be
-rebuilt from source. Capturing these is outstanding work.
+Gamification lives in its own Postgres schema, not in `public`. Captured in
+`supabase-setup.sql` section 9.
+
+| Table | Key Columns |
+|---|---|
+| `gamification.user_stats` | `user_id` (PK, FK profiles), `xp`, `level`, `current_streak`, `longest_streak`, `last_activity_date` |
+| `gamification.badges` | `id`, `code` (unique), `name`, `description`, `icon` — 6 seeded rows |
+| `gamification.user_badges` | `id`, `user_id`, `badge_id`, `earned_at`, unique on (user_id, badge_id) |
+| `gamification.quiz_question_settings` | `question_id` (PK, FK quiz_questions), `time_limit_seconds`, `difficulty` (easy/medium/hard) |
+| `gamification.quiz_attempt_stats` | `id`, `attempt_id` (unique, FK quiz_attempts), `xp_earned`, `max_combo`, `correct_count`, `total_questions` |
+
+`public.quiz_attempts` is deliberately left at its original shape — extended
+per-attempt stats go in `gamification.quiz_attempt_stats`, joined on `attempt_id`.
+
+RLS is enabled on all five. `user_stats` and `user_badges` allow the owner to
+SELECT, `badges` is world-readable. `quiz_question_settings` and
+`quiz_attempt_stats` have **no policies at all** — deliberate deny-all, since
+every read and write goes through the SECURITY DEFINER functions below.
+
+Badge codes: `first_quiz`, `perfect_score`, `streak_3`, `streak_7`, `combo_5`,
+`quiz_master`.
+
+XP model: 10 XP per correct answer × a combo multiplier (+0.2× every 3
+consecutive correct, capped at 2.0×), +5 if answered with over half the time
+limit remaining, +20 for finishing, +50 more at 90%+. Level N requires
+`100 * N * (N+1) / 2` total XP (`xp_to_level`).
 
 | RPC | Called from | Purpose |
 |---|---|---|
@@ -208,10 +230,18 @@ rebuilt from source. Capturing these is outstanding work.
 | `get_leaderboard(p_class_id)` | `gamificationservice` | Rankings; null class id = global |
 | `set_question_gamification_settings(p_question_id, p_time_limit_seconds, p_difficulty)` | `lecturerService.createQuiz` | Per-question timer and difficulty |
 
-Backing storage (inferred from frontend usage, not yet verified against the
-live database): a user stats table (xp, level, current/longest streak), a badges
-table and a user_badges join table, `time_limit_seconds` and `difficulty`
-columns on `quiz_questions`, and additional columns on `quiz_attempts`.
+Two more functions support these: `xp_to_level(xp)` (the level curve) and
+`custom_access_token_hook(event)`, which injects `profiles.role` into the JWT.
+
+⚠️ **The auth hook needs manual setup.** Running `supabase-setup.sql` creates
+`custom_access_token_hook` but cannot activate it — it must also be registered
+in the dashboard under **Authentication → Hooks → Custom Access Token**. Miss
+that step on a fresh project and role claims silently never appear in the JWT.
+
+A trigger `on_profile_created_init_stats` on `public.profiles` calls
+`gamification.handle_new_profile()` to create each user's `user_stats` row, so
+the signup chain is: `auth.users` insert → `handle_new_user()` → profile row →
+this trigger → `user_stats` row.
 
 ### RLS Summary
 - Students can only read/write their own data
@@ -298,8 +328,8 @@ Haptics (`expo-haptics`) are used throughout for button presses and feedback. An
 
 ## Known Issues & Notes
 
-- **The gamification SQL is not in the repo.** Six RPCs and their backing tables exist only in the live Supabase project (see the Gamification RPCs section above). Until they're dumped into `supabase-setup.sql`, a fresh clone cannot stand up a working database, and the quiz flow will fail on any project that lacks them.
-- `QuizScreen` renders `result.review.map(...)` without a guard, so a `submit_quiz_attempt` response missing `review` would crash the results screen.
+- **`supabase-setup.sql` has never been run end-to-end against a fresh project.** Section 9 was reconstructed from the live database rather than written first, so while it matches what's deployed, the full script's ordering has not been verified on an empty database.
+- **The custom access token hook needs a manual dashboard step** after running the SQL — see the Gamification section above.
 - **Dark mode** is scaffolded but not implemented — `toggleTheme` does nothing.
 - `offlineService` is initialized but not actively called from most screens — it's a background sync utility.
 - `useOffline` hook is imported in `App.js` but `isOnline` is not currently used to gate any UI.
