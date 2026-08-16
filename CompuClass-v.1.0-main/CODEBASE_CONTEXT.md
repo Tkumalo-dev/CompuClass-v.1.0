@@ -216,10 +216,16 @@ every read and write goes through the SECURITY DEFINER functions below.
 Badge codes: `first_quiz`, `perfect_score`, `streak_3`, `streak_7`, `combo_5`,
 `quiz_master`.
 
-XP model: 10 XP per correct answer × a combo multiplier (+0.2× every 3
-consecutive correct, capped at 2.0×), +5 if answered with over half the time
-limit remaining, +20 for finishing, +50 more at 90%+. Level N requires
-`100 * N * (N+1) / 2` total XP (`xp_to_level`).
+XP model: base XP per correct answer scales with difficulty — easy 5, medium 10,
+hard 15 — multiplied by a combo multiplier (+0.2× every 3 consecutive correct,
+capped at 2.0×), +5 if answered with over half the time limit remaining, +20 for
+finishing, +50 more at 90%+. Level N requires `100 * N * (N+1) / 2` total XP
+(`xp_to_level`).
+
+Medium is the default for any question without a `quiz_question_settings` row,
+so quizzes authored before difficulty existed pay exactly what they always did.
+The base-XP values are duplicated in `QuizScreen`'s `DIFFICULTY` map to label
+each question in the UI — if you change one, change the other.
 
 **Retry policy:** a quiz is worth its best-ever attempt, *once*. Each submission
 is valued on its own, then only the improvement over the user's previous best on

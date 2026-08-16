@@ -11,6 +11,15 @@ const BLUE = '#2563EB'; const YELLOW = '#FACC15'; const RED = '#EF4444';
 const GREEN = '#22C55E'; const WHITE = '#FFFFFF'; const BG = '#F3F4F6';
 const TEXT = '#111827'; const MUTED = '#4B5563'; const BORDER = '#E5E7EB';
 const PURPLE = '#8B5CF6';
+// Darker than YELLOW so it stays readable as text on a white card
+const AMBER = '#CA8A04';
+
+// Base XP mirrors the CASE in submit_quiz_attempt — keep the two in sync.
+const DIFFICULTY = {
+  easy:   { label: 'Easy',   color: GREEN, icon: 'leaf',    xp: 5  },
+  medium: { label: 'Medium', color: AMBER, icon: 'flame',   xp: 10 },
+  hard:   { label: 'Hard',   color: RED,   icon: 'barbell', xp: 15 },
+};
 
 export default function QuizScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -274,6 +283,7 @@ export default function QuizScreen({ route, navigation }) {
   if (!currentQ) return null;
   const options = typeof currentQ.options === 'string' ? JSON.parse(currentQ.options) : currentQ.options;
   const timerColor = timeLeft === null ? MUTED : timeLeft <= 5 ? RED : timeLeft <= 10 ? YELLOW : GREEN;
+  const difficultyMeta = DIFFICULTY[currentQ.difficulty] || DIFFICULTY.medium;
 
   return (
     <View style={styles.container}>
@@ -289,6 +299,12 @@ export default function QuizScreen({ route, navigation }) {
       </LinearGradient>
       <View style={styles.progressBar}><View style={[styles.progressFill, { width: `${((currentQuestion + 1) / questions.length) * 100}%` }]} /></View>
       <ScrollView style={styles.questionScroll}>
+        <View style={[styles.difficultyPill, { backgroundColor: difficultyMeta.color + '1A', borderColor: difficultyMeta.color }]}>
+          <Ionicons name={difficultyMeta.icon} size={12} color={difficultyMeta.color} />
+          <Text style={[styles.difficultyText, { color: difficultyMeta.color }]}>
+            {difficultyMeta.label} · {difficultyMeta.xp} XP
+          </Text>
+        </View>
         <Text style={styles.questionText}>{currentQ.question}</Text>
         <View style={styles.optionsWrap}>
           {Array.isArray(options) && options.map((option, index) => (
@@ -350,6 +366,8 @@ const styles = StyleSheet.create({
   statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
   statPillText: { color: WHITE, fontSize: 12, fontWeight: '800' },
   retryNote: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600', textAlign: 'center', marginBottom: 20, paddingHorizontal: 24 },
+  difficultyPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, borderRadius: 20, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 10 },
+  difficultyText: { fontSize: 11, fontWeight: '800' },
   resultBtns: { flexDirection: 'row', gap: 12 },
   resultBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, gap: 6 },
   resultBtnText: { fontWeight: '700', fontSize: 14 },

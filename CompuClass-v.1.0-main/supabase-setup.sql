@@ -584,8 +584,11 @@ $function$;
 -- Grades an attempt and awards XP, combos, streaks and badges in one pass.
 --
 -- XP model:
---   * 10 XP per correct answer, multiplied by a combo bonus that rises 0.2x
---     every 3 consecutive correct answers, capped at 2.0x
+--   * Base XP per correct answer by difficulty: easy 5, medium 10, hard 15.
+--     Medium is the default, so content authored before difficulty existed is
+--     unaffected.
+--   * That base is multiplied by a combo bonus that rises 0.2x every 3
+--     consecutive correct answers, capped at 2.0x
 --   * +5 speed bonus if answered with more than half the time limit left
 --   * +20 for completing the quiz, +50 more for scoring 90% or above
 --
@@ -636,14 +639,24 @@ DECLARE
   v_quiz_count INTEGER;
   v_previous_best INTEGER;
   v_xp_awarded INTEGER;
+  v_base_xp INTEGER;
 BEGIN
   IF v_user_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
 
   SELECT passing_score INTO v_passing_score FROM public.quizzes WHERE id = p_quiz_id;
   IF v_passing_score IS NULL THEN RAISE EXCEPTION 'Quiz not found'; END IF;
 
+  -- Join the per-question settings once here rather than looking them up
+  -- again inside the loop. Questions the lecturer never customised have no
+  -- settings row at all, hence the COALESCE to 'medium'.
   FOR v_question IN
-    SELECT * FROM public.quiz_questions WHERE quiz_id = p_quiz_id ORDER BY order_index
+    SELECT q.*,
+           qs.time_limit_seconds,
+           COALESCE(qs.difficulty, 'medium') AS difficulty
+    FROM public.quiz_questions q
+    LEFT JOIN gamification.quiz_question_settings qs ON qs.question_id = q.id
+    WHERE q.quiz_id = p_quiz_id
+    ORDER BY q.order_index
   LOOP
     v_total := v_total + 1;
 
@@ -660,17 +673,21 @@ BEGIN
       v_multiplier := LEAST(1 + (FLOOR((v_combo - 1) / 3.0) * 0.2), 2.0);
 
       v_speed_bonus := 0;
-      IF v_answer ? 'time_remaining_seconds' THEN
-        DECLARE v_limit INTEGER;
-        BEGIN
-          SELECT time_limit_seconds INTO v_limit FROM gamification.quiz_question_settings WHERE question_id = v_question.id;
-          IF v_limit IS NOT NULL AND (v_answer->>'time_remaining_seconds')::NUMERIC > (v_limit * 0.5) THEN
-            v_speed_bonus := 5;
-          END IF;
-        END;
+      IF v_answer ? 'time_remaining_seconds'
+         AND v_question.time_limit_seconds IS NOT NULL
+         AND (v_answer->>'time_remaining_seconds')::NUMERIC > (v_question.time_limit_seconds * 0.5) THEN
+        v_speed_bonus := 5;
       END IF;
 
-      v_question_xp := ROUND(10 * v_multiplier) + v_speed_bonus;
+      -- Harder questions are worth more. Medium is the default, so quizzes
+      -- authored before difficulty existed keep paying exactly what they did.
+      v_base_xp := CASE v_question.difficulty
+                     WHEN 'easy' THEN 5
+                     WHEN 'hard' THEN 15
+                     ELSE 10
+                   END;
+
+      v_question_xp := ROUND(v_base_xp * v_multiplier) + v_speed_bonus;
       v_xp_earned := v_xp_earned + v_question_xp;
       v_correct_count := v_correct_count + 1;
     ELSE
@@ -682,7 +699,8 @@ BEGIN
       'question', v_question.question,
       'correct_answer', v_question.correct_answer,
       'selected_answer', (v_answer->>'selected_answer'),
-      'is_correct', v_is_correct
+      'is_correct', v_is_correct,
+      'difficulty', v_question.difficulty
     );
   END LOOP;
 
