@@ -252,6 +252,27 @@ export default function DashboardScreen({ navigation }) {
         </AnimatedCard>
       </View>
 
+      {/* Circuit Maze card */}
+      <AnimatedCard onPress={() => navigation.navigate('CircuitMazeTopic')} style={{ marginHorizontal: 16, marginBottom: 24 }}>
+        <LinearGradient colors={['#0A0E1A', '#0D1B2A']} style={styles.mazeCard}>
+          <View style={styles.mazeLeft}>
+            <View style={styles.mazeBadge}>
+              <Text style={styles.mazeBadgeText}>🎮 NEW</Text>
+            </View>
+            <Text style={styles.mazeTitle}>Circuit Maze</Text>
+            <Text style={styles.mazeDesc}>Answer IT questions, roll the dice{"\n"}& navigate the circuit board!</Text>
+            <View style={styles.mazeTags}>
+              {['❤️ 5 Lives', '⚡ XP Rewards', '🏆 Leaderboard'].map((t, i) => (
+                <View key={i} style={styles.mazeTag}><Text style={styles.mazeTagText}>{t}</Text></View>
+              ))}
+            </View>
+          </View>
+          <View style={styles.mazeRight}>
+            <Text style={{ fontSize: 52 }}>🔌</Text>
+          </View>
+        </LinearGradient>
+      </AnimatedCard>
+
       {/* Quick nav row */}
       <Text style={styles.sectionTitle}>Quick Access</Text>
       <View style={styles.quickRow}>
@@ -522,4 +543,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   quickLabel: { fontSize: 11, fontWeight: "700", color: TEXT },
+
+  mazeCard: {
+    borderRadius: 20, padding: 20, flexDirection: "row",
+    alignItems: "center", borderWidth: 1, borderColor: "#1A3A5C",
+  },
+  mazeLeft:  { flex: 1 },
+  mazeBadge: {
+    alignSelf: "flex-start", backgroundColor: "#00FF9C22", borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
+    borderWidth: 1, borderColor: "#00FF9C",
+  },
+  mazeBadgeText: { fontSize: 10, fontWeight: "900", color: "#00FF9C", letterSpacing: 1 },
+  mazeTitle: { fontSize: 20, fontWeight: "900", color: "#E0F7FF", marginBottom: 6 },
+  mazeDesc:  { fontSize: 12, color: "#4A7A9B", lineHeight: 18, marginBottom: 12 },
+  mazeTags:  { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  mazeTag:   {
+    backgroundColor: "#0F1E30", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: "#1A3A5C",
+  },
+  mazeTagText: { fontSize: 10, color: "#00BFFF", fontWeight: "700" },
+  mazeRight: { alignItems: "center", justifyContent: "center", paddingLeft: 12 },
 });

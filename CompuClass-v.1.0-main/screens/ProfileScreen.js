@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { authService } from "../services/authService";
@@ -50,8 +51,15 @@ export default function ProfileScreen({ onLogout }) {
 
   useEffect(() => {
     loadUser();
-    loadGamification();
   }, []);
+
+  // Refresh XP/stats every time the profile tab comes into focus
+  // (e.g. after returning from Circuit Maze)
+  useFocusEffect(
+    useCallback(() => {
+      loadGamification();
+    }, [])
+  );
 
   const loadGamification = async () => {
     const [stats, myBadges] = await Promise.all([
