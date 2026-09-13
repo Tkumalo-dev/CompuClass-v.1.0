@@ -32,6 +32,9 @@ import StudentMaterialsScreen from './screens/StudentMaterialsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ChatbotScreen from './screens/ChatbotScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
+import CircuitMazeScreen from './screens/CircuitMazeScreen';
+import CircuitMazeLobbyScreen from './screens/CircuitMazeLobbyScreen';
+import CircuitMazeTopicScreen from './screens/CircuitMazeTopicScreen';
 import Sidebar from './components/Sidebar';
 
 import { authService } from './services/authService';
@@ -61,9 +64,13 @@ function LecturerStack() {
   );
 }
 
+const MAZE_ROUTES = ['CircuitMaze', 'CircuitMazeLobby', 'CircuitMazeTopic'];
+
 // Floating pill tab bar
 function CustomTabBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
+  const currentRouteName = state.routes[state.index]?.name || '';
+  if (MAZE_ROUTES.includes(currentRouteName)) return null;
   const visibleTabs = ['Dashboard', 'Lecturer', 'Search', 'Profile'];
   const scaleAnims = useRef(visibleTabs.map(() => new Animated.Value(1))).current;
 
@@ -267,11 +274,12 @@ function AppContent() {
             <StatusBar style="dark" backgroundColor={WHITE} />
             <Tab.Navigator
               tabBar={props => <CustomTabBar {...props} />}
-              screenOptions={{
-                header: () => (
+              screenOptions={({ route }) => ({
+                header: () => MAZE_ROUTES.includes(route.name) ? null : (
                   <CustomHeader onMenuPress={() => setSidebarVisible(true)} />
                 ),
-              }}
+                headerShown: !MAZE_ROUTES.includes(route.name),
+              })}
             >
               {userRole === 'lecturer' ? (
                 <Tab.Screen name="Lecturer" component={LecturerStack} options={{ tabBarLabel: 'Lecturer' }} />
@@ -290,6 +298,9 @@ function AppContent() {
               <Tab.Screen name="Materials" component={StudentMaterialsScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Chatbot" component={ChatbotScreen} options={{ tabBarButton: () => null, headerShown: false }} />
+              <Tab.Screen name="CircuitMaze" component={CircuitMazeScreen} options={{ tabBarButton: () => null, headerShown: false }} />
+              <Tab.Screen name="CircuitMazeLobby" component={CircuitMazeLobbyScreen} options={{ tabBarButton: () => null, headerShown: false }} />
+              <Tab.Screen name="CircuitMazeTopic" component={CircuitMazeTopicScreen} options={{ tabBarButton: () => null, headerShown: false }} />
             </Tab.Navigator>
           </View>
         </NavigationContainer>
