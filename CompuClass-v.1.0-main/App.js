@@ -31,6 +31,7 @@ import QuizDetailScreen from './screens/QuizDetailScreen';
 import StudentMaterialsScreen from './screens/StudentMaterialsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ChatbotScreen from './screens/ChatbotScreen';
+import GameScreen from './screens/GameScreen';
 import Sidebar from './components/Sidebar';
 
 import { authService } from './services/authService';
@@ -65,6 +66,9 @@ function CustomTabBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
   const visibleTabs = ['Dashboard', 'Lecturer', 'Search', 'Profile'];
   const scaleAnims = useRef(visibleTabs.map(() => new Animated.Value(1))).current;
+  const hiddenScreens = ['Chatbot', 'Game', 'Windows 11', 'PC Lab'];
+
+  if (hiddenScreens.includes(state.routes[state.index]?.name)) return null;
 
   const tabConfig = {
     Dashboard: { icon: 'home', iconOff: 'home-outline', label: 'Home' },
@@ -153,21 +157,9 @@ function AppContent() {
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => {
-        if (currentRoute === 'PC Lab') return false;
-        return g.dx > 20 && Math.abs(g.dy) < 80;
-      },
-      onPanResponderMove: (_, g) => {
-        sidebarTranslateX.setValue(Math.min(0, -width * 0.8 + g.dx));
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dx > 50) {
-          Animated.spring(sidebarTranslateX, { toValue: 0, useNativeDriver: true }).start();
-          setSidebarVisible(true);
-        } else {
-          Animated.spring(sidebarTranslateX, { toValue: -width * 0.8, useNativeDriver: true }).start();
-        }
-      },
+      onMoveShouldSetPanResponder: () => false,
+      onPanResponderMove: () => {},
+      onPanResponderRelease: () => {},
     })
   ).current;
 
@@ -288,6 +280,7 @@ function AppContent() {
               <Tab.Screen name="Materials" component={StudentMaterialsScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarButton: () => null }} />
               <Tab.Screen name="Chatbot" component={ChatbotScreen} options={{ tabBarButton: () => null, headerShown: false }} />
+              <Tab.Screen name="Game" component={GameScreen} options={{ tabBarButton: () => null, headerShown: false }} />
             </Tab.Navigator>
           </View>
         </NavigationContainer>
