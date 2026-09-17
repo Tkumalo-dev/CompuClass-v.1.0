@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase';
 import { authService } from './authService';
+import { AppError } from '../utils/errorMessages';
 
 // Generate a random 6-char room code
 const makeCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -62,7 +63,7 @@ export const circuitMazeService = {
         .eq('code', code.toUpperCase())
         .eq('status', 'waiting')
         .single();
-      if (error || !room) throw new Error('Room not found or already started');
+      if (error || !room) throw new AppError('Room not found or already started');
 
       const { error: joinErr } = await supabase.from('circuit_maze_players').insert({
         room_id: room.id,

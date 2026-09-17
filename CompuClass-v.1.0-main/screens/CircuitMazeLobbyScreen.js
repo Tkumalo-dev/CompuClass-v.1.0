@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { circuitMazeService } from '../services/circuitMazeService';
 import { authService } from '../services/authService';
+import { getErrorMessage } from '../utils/errorMessages';
 
 const C = {
   bg: '#0A0E1A', panel: '#0F1E30', border: '#1A3A5C',
@@ -65,15 +66,21 @@ export default function CircuitMazeLobbyScreen({ navigation, route }) {
         (updated) => { if (updated.status === 'playing') launchGame(r.id); }
       );
     } catch (e) {
-      setError(e.message || 'Room not found.');
+      setError(getErrorMessage(e, { context: 'CircuitMazeLobby', fallback: 'Room not found.' }));
     }
     setLoading(false);
   };
 
   const handleStart = async () => {
     if (!room) return;
-    await circuitMazeService.startRoom(room.id);
-    launchGame(room.id);
+    setError('');
+    try {
+      await circuitMazeService.startRoom(room.id);
+      launchGame(room.id);
+    } catch (e) {
+      // Previously an unhandled rejection: the Start button silently did nothing.
+      setError(getErrorMessage(e, { context: 'CircuitMazeLobby', fallback: 'Could not start the game. Try again.' }));
+    }
   };
 
   const launchGame = (roomId) => {

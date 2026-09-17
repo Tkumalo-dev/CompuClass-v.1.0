@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from '../context/ThemeContext';
 import { lecturerService } from '../services/lecturerService';
+import { getErrorMessage } from '../utils/errorMessages';
 
 export default function QuizCreationScreen({ navigation, route }) {
   const { theme } = useTheme();
@@ -83,7 +84,7 @@ export default function QuizCreationScreen({ navigation, route }) {
       setShowShareModal(false);
       Alert.alert('Success', `Quiz shared to ${selectedClasses.length} class(es)!`);
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', getErrorMessage(error, { context: 'QuizCreation' }));
     } finally {
       setLoading(false);
     }
@@ -142,7 +143,7 @@ export default function QuizCreationScreen({ navigation, route }) {
       setShowAIGenerate(false);
       setShowCreateQuiz(true);
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', getErrorMessage(error, { context: 'QuizCreation' }));
     } finally {
       setAiGenerating(false);
       setGenerationProgress(0);
@@ -202,7 +203,7 @@ export default function QuizCreationScreen({ navigation, route }) {
       loadQuizzes();
       Alert.alert('Success', 'Quiz created successfully');
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', getErrorMessage(error, { context: 'QuizCreation' }));
     } finally {
       setLoading(false);
     }

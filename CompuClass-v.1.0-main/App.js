@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, TouchableOpacity, PanResponder, Animated, Dimensions, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, PanResponder, Animated, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -35,16 +35,26 @@ import LeaderboardScreen from './screens/LeaderboardScreen';
 import CircuitMazeScreen from './screens/CircuitMazeScreen';
 import CircuitMazeLobbyScreen from './screens/CircuitMazeLobbyScreen';
 import CircuitMazeTopicScreen from './screens/CircuitMazeTopicScreen';
-import Sidebar from './components/Sidebar';
+import NotFoundScreen from './screens/NotFoundScreen';
+import Sidebar, { getSidebarHiddenX } from './components/Sidebar';
+import ErrorBoundary from './components/ErrorBoundary';
+import { installWebAlert } from './utils/webAlert';
+import { setPageMeta } from './utils/pageMeta';
 
 import { authService } from './services/authService';
 import { supabase } from './config/supabase';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useOffline } from './hooks/useOffline';
 
+installWebAlert();
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
-const { width } = Dimensions.get('window');
+
+// Web only: the app is served entirely from "/", so any other path is a 404.
+const KNOWN_WEB_PATHS = ['', '/', '/index.html'];
+const isUnknownWebPath = () =>
+  Platform.OS === 'web' && typeof window !== 'undefined' && !KNOWN_WEB_PATHS.includes(window.location.pathname);
 
 const BLUE = '#2563EB'; const YELLOW = '#FACC15'; const WHITE = '#FFFFFF';
 const BG = '#F3F4F6'; const TEXT = '#111827'; const MUTED = '#4B5563';
@@ -69,10 +79,12 @@ const MAZE_ROUTES = ['CircuitMaze', 'CircuitMazeLobby', 'CircuitMazeTopic'];
 // Floating pill tab bar
 function CustomTabBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
+  const visibleTabs = ['Dashboard', 'Lecturer', 'Search', 'Profile'];
+  // Hooks must run before the early return below; previously useRef came after
+  // it, so entering a Circuit Maze screen changed the hook order and crashed.
+  const scaleAnims = useRef(visibleTabs.map(() => new Animated.Value(1))).current;
   const currentRouteName = state.routes[state.index]?.name || '';
   if (MAZE_ROUTES.includes(currentRouteName)) return null;
-  const visibleTabs = ['Dashboard', 'Lecturer', 'Search', 'Profile'];
-  const scaleAnims = useRef(visibleTabs.map(() => new Animated.Value(1))).current;
 
   const tabConfig = {
     Dashboard: { icon: 'home', iconOff: 'home-outline', label: 'Home' },
@@ -121,11 +133,17 @@ function CustomTabBar({ state, descriptors, navigation }) {
   );
 }
 
-function CustomHeader({ onMenuPress }) {
+function CustomHeader({ onMenuPress, onLogoPress }) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.headerLeft}>
+      <TouchableOpacity
+        style={styles.headerLeft}
+        onPress={onLogoPress}
+        activeOpacity={0.75}
+        accessibilityRole="link"
+        accessibilityLabel="CompuClass home"
+      >
         <LinearGradient colors={[BLUE, '#1D4ED8']} style={styles.headerLogoWrap}>
           <Ionicons name="desktop" size={18} color={WHITE} />
         </LinearGradient>
@@ -133,11 +151,13 @@ function CustomHeader({ onMenuPress }) {
           <Text style={styles.headerAppName}>CompuClass</Text>
           <Text style={styles.headerTagline}>Computer Learning Platform</Text>
         </View>
-      </View>
+      </TouchableOpacity>
       <TouchableOpacity
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onMenuPress(); }}
         style={styles.menuBtn}
         activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel="Open menu"
       >
         <Ionicons name="menu" size={22} color={BLUE} />
       </TouchableOpacity>
@@ -155,31 +175,58 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [userRole, setUserRole] = useState(null);
-  const [currentRoute, setCurrentRoute] = useState('');
+  const [notFound] = useState(isUnknownWebPath);
   const navigationRef = useRef(null);
-  const sidebarTranslateX = useRef(new Animated.Value(-width * 0.8)).current;
+  const { width: windowWidth } = useWindowDimensions();
+  const sidebarHiddenX = useRef(getSidebarHiddenX(windowWidth));
+  sidebarHiddenX.current = getSidebarHiddenX(windowWidth);
+  const sidebarTranslateX = useRef(new Animated.Value(sidebarHiddenX.current)).current;
+  // Read through a ref: the pan responder is created once, so reading state
+  // directly would always see the initial empty route.
+  const currentRouteRef = useRef('');
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => {
-        if (currentRoute === 'PC Lab') return false;
+        if (currentRouteRef.current === 'PC Lab') return false;
         return g.dx > 20 && Math.abs(g.dy) < 80;
       },
       onPanResponderMove: (_, g) => {
-        sidebarTranslateX.setValue(Math.min(0, -width * 0.8 + g.dx));
+        sidebarTranslateX.setValue(Math.min(0, sidebarHiddenX.current + g.dx));
       },
       onPanResponderRelease: (_, g) => {
         if (g.dx > 50) {
           Animated.spring(sidebarTranslateX, { toValue: 0, useNativeDriver: true }).start();
           setSidebarVisible(true);
         } else {
-          Animated.spring(sidebarTranslateX, { toValue: -width * 0.8, useNativeDriver: true }).start();
+          Animated.spring(sidebarTranslateX, { toValue: sidebarHiddenX.current, useNativeDriver: true }).start();
         }
       },
     })
   ).current;
 
   useEffect(() => { checkUser(); }, []);
+
+  const preAuthPage = notFound ? 'NotFound'
+    : isFirstLaunch ? 'Onboarding'
+    : isLoggedIn ? null
+    : showSignUp ? 'SignUp'
+    : showForgotPassword ? 'ForgotPassword'
+    : 'Login';
+  useEffect(() => { if (!loading && preAuthPage) setPageMeta(preAuthPage); }, [loading, preAuthPage]);
+
+  const syncRoute = () => {
+    const name = navigationRef.current?.getCurrentRoute()?.name || '';
+    currentRouteRef.current = name;
+    if (name) setPageMeta(name);
+  };
+
+  const goHome = () => {
+    try {
+      if (userRole === 'lecturer') navigationRef.current?.navigate('Lecturer', { screen: 'LecturerDashboard' });
+      else navigationRef.current?.navigate('Dashboard');
+    } catch {}
+  };
 
   const checkUser = async () => {
     try {
@@ -230,6 +277,8 @@ function AppContent() {
     try { navigationRef.current?.navigate(screen); } catch {}
   };
 
+  if (notFound) return <NotFoundScreen onGoHome={() => window.location.replace('/')} />;
+
   if (loading) return null;
 
   if (isFirstLaunch) return (
@@ -265,10 +314,9 @@ function AppContent() {
       <SafeAreaView style={{ flex: 1, backgroundColor: WHITE }} edges={['left', 'right']}>
         <NavigationContainer
           ref={navigationRef}
-          onStateChange={() => {
-            const route = navigationRef.current?.getCurrentRoute();
-            setCurrentRoute(route?.name || '');
-          }}
+          documentTitle={{ enabled: false }}
+          onReady={syncRoute}
+          onStateChange={syncRoute}
         >
           <View style={{ flex: 1 }} {...panResponder.panHandlers}>
             <StatusBar style="dark" backgroundColor={WHITE} />
@@ -276,7 +324,7 @@ function AppContent() {
               tabBar={props => <CustomTabBar {...props} />}
               screenOptions={({ route }) => ({
                 header: () => MAZE_ROUTES.includes(route.name) ? null : (
-                  <CustomHeader onMenuPress={() => setSidebarVisible(true)} />
+                  <CustomHeader onMenuPress={() => setSidebarVisible(true)} onLogoPress={goHome} />
                 ),
                 headerShown: !MAZE_ROUTES.includes(route.name),
               })}
@@ -308,6 +356,7 @@ function AppContent() {
           visible={sidebarVisible}
           onClose={() => setSidebarVisible(false)}
           onNavigate={handleNavigate}
+          onHomePress={goHome}
           translateX={sidebarTranslateX}
         />
       </SafeAreaView>
@@ -374,8 +423,10 @@ const styles = StyleSheet.create({
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

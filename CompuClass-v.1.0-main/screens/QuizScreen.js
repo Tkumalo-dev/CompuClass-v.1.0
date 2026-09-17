@@ -26,6 +26,7 @@ export default function QuizScreen({ route, navigation }) {
   const { quizId } = route?.params || {};
   const [loading, setLoading] = useState(true);
   const [availableQuizzes, setAvailableQuizzes] = useState([]);
+  const [listError, setListError] = useState(false);
   const [quiz, setQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -77,17 +78,25 @@ export default function QuizScreen({ route, navigation }) {
   }, [currentQuestion, questions.length]);
 
   const loadAvailableQuizzes = async () => {
+    setListError(false);
     try {
       const user = await authService.getCurrentUser();
-      const { data: classStudents } = await supabase.from('class_students').select('class_id').eq('student_id', user.id);
+      const { data: classStudents, error: classError } = await supabase.from('class_students').select('class_id').eq('student_id', user.id);
+      if (classError) throw classError;
       const classIds = classStudents?.map((cs) => cs.class_id) || [];
       if (classIds.length === 0) { setAvailableQuizzes([]); setLoading(false); return; }
-      const { data: assignments } = await supabase.from('quiz_assignments').select('quiz_id').in('class_id', classIds);
+      const { data: assignments, error: assignmentError } = await supabase.from('quiz_assignments').select('quiz_id').in('class_id', classIds);
+      if (assignmentError) throw assignmentError;
       const quizIds = assignments?.map((a) => a.quiz_id) || [];
       if (quizIds.length === 0) { setAvailableQuizzes([]); setLoading(false); return; }
-      const { data: quizzes } = await supabase.from('quizzes').select('*').in('id', quizIds);
+      const { data: quizzes, error: quizError } = await supabase.from('quizzes').select('*').in('id', quizIds);
+      if (quizError) throw quizError;
       setAvailableQuizzes(quizzes || []);
-    } catch {}
+    } catch (error) {
+      // Previously swallowed, so a failed load looked like "No quizzes assigned yet".
+      console.error('[Quiz] Failed to load assigned quizzes:', error);
+      setListError(true);
+    }
     finally { setLoading(false); }
   };
 
@@ -179,7 +188,16 @@ export default function QuizScreen({ route, navigation }) {
         <Text style={[styles.headerTitle, { color: TEXT }]}>Available Quizzes</Text>
       </LinearGradient>
       <ScrollView style={styles.listScroll} contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
-        {availableQuizzes.length === 0 ? (
+        {listError ? (
+          <View style={styles.emptyState} accessibilityRole="alert">
+            <Ionicons name="cloud-offline-outline" size={64} color={BORDER} />
+            <Text style={styles.emptyText}>{"Couldn't load your quizzes"}</Text>
+            <Text style={styles.emptySubtext}>Check your internet connection and try again.</Text>
+            <TouchableOpacity onPress={() => { setLoading(true); loadAvailableQuizzes(); }} style={styles.retryBtn} activeOpacity={0.8}>
+              <Text style={styles.retryText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : availableQuizzes.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="document-text-outline" size={64} color={BORDER} />
             <Text style={styles.emptyText}>No quizzes assigned yet</Text>
@@ -340,6 +358,8 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 18, fontWeight: '700', color: TEXT, marginTop: 16 },
   emptySubtext: { fontSize: 13, color: MUTED, marginTop: 6, textAlign: 'center' },
+  retryBtn: { marginTop: 16, backgroundColor: BLUE, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 22 },
+  retryText: { color: WHITE, fontSize: 14, fontWeight: '800' },
   quizCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, borderRadius: 16, padding: 16, marginBottom: 12, gap: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   quizIconWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: YELLOW, alignItems: 'center', justifyContent: 'center' },
   quizInfo: { flex: 1 },

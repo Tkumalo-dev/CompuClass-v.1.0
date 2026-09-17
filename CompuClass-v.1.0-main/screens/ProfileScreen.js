@@ -13,11 +13,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { authService } from "../services/authService";
 import { gamificationService } from "../services/gamificationservice";
+import { validateNewPassword, PASSWORD_HINT, PASSWORD_MAX_LENGTH } from "../utils/passwordPolicy";
+import { cleanText, LIMITS } from "../utils/inputValidation";
+import { getErrorMessage } from "../utils/errorMessages";
 
 const BLUE = "#2563EB";
 const YELLOW = "#FACC15";
@@ -32,6 +35,7 @@ const BORDER = "#E5E7EB";
 
 export default function ProfileScreen({ onLogout }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [user, setUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -95,13 +99,14 @@ export default function ProfileScreen({ onLogout }) {
     }
     setLoading(true);
     try {
-      await authService.updateProfile(fullName, avatarFile);
+      const cleanName = cleanText(fullName, { field: "Name", maxLength: LIMITS.name, required: true, allowMarkup: false });
+      await authService.updateProfile(cleanName, avatarFile);
       Alert.alert("Success", "Profile updated");
       setShowEditModal(false);
       setAvatarFile(null);
       loadUser();
     } catch (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Error", getErrorMessage(error, { context: "Profile" }));
     } finally {
       setLoading(false);
     }
@@ -112,23 +117,24 @@ export default function ProfileScreen({ onLogout }) {
       Alert.alert("Error", "All fields are required");
       return;
     }
-    if (newPassword.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
-      return;
-    }
     if (newPassword !== confirmPassword) {
       Alert.alert("Error", "Passwords do not match");
       return;
     }
     setLoading(true);
     try {
+      const passwordProblems = await validateNewPassword(newPassword, { email: user?.email });
+      if (passwordProblems.length > 0) {
+        Alert.alert("Choose a stronger password", passwordProblems.join("\n"));
+        return;
+      }
       await authService.updatePassword(null, newPassword);
       Alert.alert("Success", "Password changed successfully");
       setShowPasswordModal(false);
       setNewPassword("");
       setConfirmPassword("");
     } catch (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Error", getErrorMessage(error, { context: "Profile" }));
     } finally {
       setLoading(false);
     }
@@ -185,7 +191,8 @@ export default function ProfileScreen({ onLogout }) {
       icon: "settings-outline",
       label: "Settings",
       color: MUTED,
-      screen: "Settings",
+      // Previously only had `screen: "Settings"`, which nothing read, so the tile did nothing.
+      onPress: () => navigation.navigate("Settings"),
     },
   ];
 
@@ -379,7 +386,9 @@ export default function ProfileScreen({ onLogout }) {
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
+              maxLength={PASSWORD_MAX_LENGTH}
             />
+            <Text style={styles.passwordHint}>{PASSWORD_HINT}</Text>
             <TextInput
               style={styles.input}
               placeholder="Confirm New Password"
@@ -415,6 +424,7 @@ export default function ProfileScreen({ onLogout }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
+  passwordHint: { color: MUTED, fontSize: 12, marginTop: -4, marginBottom: 12, lineHeight: 16 },
   heroBanner: {
     alignItems: "center",
     paddingTop: 32,

@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { aiService } from '../services/aiService';
+import { RateLimitError } from '../utils/rateLimiter';
 
 const BLUE = '#2563EB'; const WHITE = '#FFFFFF'; const BG = '#F3F4F6';
 const TEXT = '#111827'; const MUTED = '#6B7280'; const BUBBLE_AI = '#EFF6FF';
@@ -44,8 +45,9 @@ export default function ChatbotScreen({ navigation }) {
     try {
       const reply = await aiService.chatWithAI(updatedMessages);
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: reply }]);
-    } catch {
-      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: 'Sorry, I ran into an issue. Please try again.' }]);
+    } catch (error) {
+      const text = error instanceof RateLimitError ? error.userMessage : 'Sorry, I ran into an issue. Please try again.';
+      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', text }]);
     } finally {
       setLoading(false);
       scrollToBottom();

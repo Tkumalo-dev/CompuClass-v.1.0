@@ -1,9 +1,37 @@
 import { supabase } from '../config/supabase';
 import { aiService } from './aiService';
+import { cleanText, cleanEmail, sanitizeFileName, ValidationError, LIMITS } from '../utils/inputValidation';
+import { AppError } from '../utils/errorMessages';
+
+const MAX_QUESTIONS_PER_QUIZ = 100;
+
+const cleanName = (value, field) => cleanText(value, { field, maxLength: LIMITS.name, required: true, allowMarkup: false });
+const cleanDescription = (value) => cleanText(value, { field: 'Description', maxLength: LIMITS.description, multiline: true });
+
+// Question and option text may legitimately contain code like "<div>" (this is
+// a computing course), and is always rendered as plain text, so markup is allowed.
+function cleanQuestions(questions) {
+  if (!Array.isArray(questions) || questions.length === 0) throw new ValidationError('Please add at least one question.');
+  if (questions.length > MAX_QUESTIONS_PER_QUIZ) throw new ValidationError(`A quiz can have at most ${MAX_QUESTIONS_PER_QUIZ} questions.`);
+
+  return questions.map((q, i) => {
+    const label = `Question ${i + 1}`;
+    const question = cleanText(q?.question, { field: label, maxLength: LIMITS.question, required: true, multiline: true });
+    if (!Array.isArray(q?.options)) throw new ValidationError(`${label} needs answer options.`);
+    const options = q.options.map((opt, j) => cleanText(opt, { field: `${label}, option ${j + 1}`, maxLength: LIMITS.option }));
+    if (options.filter(Boolean).length < 2) throw new ValidationError(`${label} needs at least two answer options.`);
+    if (!Number.isInteger(q.correctAnswer) || !options[q.correctAnswer]) {
+      throw new ValidationError(`${label}: please mark a correct answer that isn't blank.`);
+    }
+    return { ...q, question, options };
+  });
+}
 
 export const lecturerService = {
   async createFolder(name, description = '') {
     try {
+      name = cleanName(name, 'Folder name');
+      description = cleanDescription(description);
       const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('folders')
@@ -43,8 +71,10 @@ export const lecturerService = {
 
   async uploadDocument(folderId, file, title) {
     try {
+      title = cleanText(title, { field: 'Document title', maxLength: LIMITS.title, required: true, allowMarkup: false });
+      const safeFileName = sanitizeFileName(file?.name, 'document');
       const { data: { user } } = await supabase.auth.getUser();
-      const fileName = `${user.id}/${Date.now()}_${file.name}`;
+      const fileName = `${user.id}/${Date.now()}_${safeFileName}`;
       
       // Read file using fetch and arrayBuffer
       const response = await fetch(file.uri);
@@ -75,7 +105,7 @@ export const lecturerService = {
         .insert({
           title,
           file_url: urlData.publicUrl,
-          file_name: file.name,
+          file_name: safeFileName,
           file_type: file.mimeType,
           file_size: file.size,
           folder_id: folderId,
@@ -113,6 +143,8 @@ export const lecturerService = {
 
   async createQuiz(folderId, title, questions) {
     try {
+      title = cleanText(title, { field: 'Quiz title', maxLength: LIMITS.title, required: true, allowMarkup: false });
+      questions = cleanQuestions(questions);
       const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('quizzes')
@@ -368,14 +400,15 @@ export const lecturerService = {
 
   async addStudent(email) {
     try {
+      email = cleanEmail(email);
       // Look up the user by email via the RPC function
       const { data: students, error } = await supabase.rpc('get_students_with_emails');
       if (error) {
         console.error('❌ Add student lookup error:', error.message);
         throw error;
       }
-      const found = (students || []).find(s => s.email === email);
-      if (!found) throw new Error(`No registered user found with email: ${email}`);
+      const found = (students || []).find(s => s.email?.toLowerCase() === email.toLowerCase());
+      if (!found) throw new AppError(`No registered user found with email: ${email}`);
       console.log('✅ Student found:', email);
       return found;
     } catch (error) {
@@ -476,6 +509,8 @@ export const lecturerService = {
   // Class Management Functions
   async createClass(name, description = '') {
     try {
+      name = cleanName(name, 'Class name');
+      description = cleanDescription(description);
       const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('classes')

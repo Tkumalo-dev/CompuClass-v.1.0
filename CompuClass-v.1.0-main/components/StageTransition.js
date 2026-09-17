@@ -1,10 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const { width: SW, height: SH } = Dimensions.get('window');
-
 export default function StageTransition({ stage, theme, onDone }) {
+  const { height: SH } = useWindowDimensions();
   const opacity  = useRef(new Animated.Value(0)).current;
   const scale    = useRef(new Animated.Value(0.6)).current;
   const slideOut = useRef(new Animated.Value(0)).current;
@@ -49,10 +48,10 @@ export default function StageTransition({ stage, theme, onDone }) {
 }
 
 const s = StyleSheet.create({
-  overlay:    { position: 'absolute', top: 0, left: 0, width: SW, height: SH, zIndex: 999 },
+  overlay:    { ...StyleSheet.absoluteFillObject, zIndex: 999 },
   grad:       { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card:       { alignItems: 'center', padding: 40, borderRadius: 28, borderWidth: 2,
-                backgroundColor: 'rgba(0,0,0,0.6)', minWidth: SW * 0.75 },
+                backgroundColor: 'rgba(0,0,0,0.6)', minWidth: '75%', maxWidth: '92%' },
   stageNum:   { fontSize: 13, fontWeight: '900', letterSpacing: 4, marginBottom: 8 },
   stageLabel: { fontSize: 28, fontWeight: '900', letterSpacing: 2, textAlign: 'center', marginBottom: 20 },
   boostBadge: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, marginBottom: 20 },

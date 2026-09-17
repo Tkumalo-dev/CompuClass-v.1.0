@@ -19,7 +19,10 @@ import MiniMap from '../components/MiniMap';
 const { width: SW } = Dimensions.get('window');
 const COLS = 11;
 const ROWS = 18;
-const CELL = Math.floor((SW - 24) / COLS);
+// Capped so the board stays phone-sized on tablets and desktop browsers
+// (unchanged on phones, which are narrower than the cap).
+const BOARD_MAX_SCREEN_W = 480;
+const CELL = Math.floor((Math.min(SW, BOARD_MAX_SCREEN_W) - 24) / COLS);
 const BOARD_W = CELL * COLS;
 const BOARD_H = CELL * ROWS;
 const FINISH_BONUS = 100;

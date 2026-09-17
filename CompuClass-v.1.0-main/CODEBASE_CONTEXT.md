@@ -49,9 +49,8 @@ CompuClass-v.1.0-main/
 │   ├── GPUAR.js            # GPU 3D viewer
 │   ├── StorageAR.js        # Storage 3D viewer
 │   ├── PSUAR.js            # PSU 3D viewer
-│   ├── SimpleAR.js         # Simplified AR component
-│   ├── WebAR.js            # WebView-based AR
-│   └── SwipeableScreen.js  # Swipeable wrapper
+│   ├── WebEmbed.js         # WebView on native, iframe on web (used by the 3D viewers)
+│   └── ErrorBoundary.js    # Friendly fallback screen for render crashes
 ├── utils/
 │   └── logger.js
 ├── assets/                 # Images, 3D models (.glb, .gltf)
