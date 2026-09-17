@@ -35,6 +35,7 @@ import LeaderboardScreen from './screens/LeaderboardScreen';
 import CircuitMazeScreen from './screens/CircuitMazeScreen';
 import CircuitMazeLobbyScreen from './screens/CircuitMazeLobbyScreen';
 import CircuitMazeTopicScreen from './screens/CircuitMazeTopicScreen';
+import GameScreen from './screens/GameScreen';
 import NotFoundScreen from './screens/NotFoundScreen';
 import Sidebar, { getSidebarHiddenX } from './components/Sidebar';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -75,6 +76,8 @@ function LecturerStack() {
 }
 
 const MAZE_ROUTES = ['CircuitMaze', 'CircuitMazeLobby', 'CircuitMazeTopic'];
+// Routes that take over the whole screen, so the floating tab bar is hidden.
+const FULLSCREEN_ROUTES = [...MAZE_ROUTES, 'Chatbot', 'Game', 'Windows 11', 'PC Lab'];
 
 // Floating pill tab bar
 function CustomTabBar({ state, descriptors, navigation }) {
@@ -84,7 +87,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
   // it, so entering a Circuit Maze screen changed the hook order and crashed.
   const scaleAnims = useRef(visibleTabs.map(() => new Animated.Value(1))).current;
   const currentRouteName = state.routes[state.index]?.name || '';
-  if (MAZE_ROUTES.includes(currentRouteName)) return null;
+  if (FULLSCREEN_ROUTES.includes(currentRouteName)) return null;
 
   const tabConfig = {
     Dashboard: { icon: 'home', iconOff: 'home-outline', label: 'Home' },
@@ -188,7 +191,9 @@ function AppContent() {
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => {
-        if (currentRouteRef.current === 'PC Lab') return false;
+        // These screens own the full gesture surface, so the sidebar swipe
+        // must not steal drags from them.
+        if (currentRouteRef.current === 'PC Lab' || currentRouteRef.current === 'Game') return false;
         return g.dx > 20 && Math.abs(g.dy) < 80;
       },
       onPanResponderMove: (_, g) => {
@@ -349,6 +354,7 @@ function AppContent() {
               <Tab.Screen name="CircuitMaze" component={CircuitMazeScreen} options={{ tabBarButton: () => null, headerShown: false }} />
               <Tab.Screen name="CircuitMazeLobby" component={CircuitMazeLobbyScreen} options={{ tabBarButton: () => null, headerShown: false }} />
               <Tab.Screen name="CircuitMazeTopic" component={CircuitMazeTopicScreen} options={{ tabBarButton: () => null, headerShown: false }} />
+              <Tab.Screen name="Game" component={GameScreen} options={{ tabBarButton: () => null, headerShown: false }} />
             </Tab.Navigator>
           </View>
         </NavigationContainer>

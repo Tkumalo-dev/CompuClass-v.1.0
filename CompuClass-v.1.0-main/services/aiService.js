@@ -17,7 +17,7 @@ const PROXY_MAX_MESSAGES = 30;
 // Legacy direct mode: Google Gemini API configuration (key ships in the app bundle)
 const GEMINI_API_KEY = USE_AI_PROXY ? undefined : process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
 async function invokeAiProxy(body) {
   const { data, error } = await supabase.functions.invoke('gemini-proxy', { body });
@@ -185,45 +185,80 @@ IMPORTANT: Generate exactly ${questionCount} questions. Make them educational an
   },
 
   // Chat with AI assistant
-  async chatWithAI(messages) {
+  async chatWithAI(messages, context = null, imageBase64 = null, retries = 3) {
     await limiters.aiChat.consume('device');
+
     if (USE_AI_PROXY) {
-      const recent = messages.slice(-PROXY_MAX_MESSAGES).map((m) => ({ role: m.role === 'user' ? 'user' : 'ai', text: m.text }));
+      // The proxy builds its own system prompt and accepts text only, so the
+      // screen context rides along on the last user message. Image chat has no
+      // proxy equivalent yet; see supabase/functions/gemini-proxy/logic.ts.
+      if (imageBase64) {
+        throw new Error('Image questions are not available while the AI proxy is enabled.');
+      }
+      const recent = messages.slice(-PROXY_MAX_MESSAGES).map((m) => ({
+        role: m.role === 'user' ? 'user' : 'ai',
+        text: m.text,
+      }));
+      if (context && recent.length > 0) {
+        const last = recent[recent.length - 1];
+        last.text = `${last.text}\n\n(The user is currently viewing: ${context})`;
+      }
       const { text } = await invokeAiProxy({ action: 'chat', messages: recent });
       return text;
     }
-    try {
-      const systemPrompt = `You are CompuBot, a helpful AI assistant for CompuClass — a computer hardware and software learning platform for students. 
+
+    const systemPrompt = `You are CompuBot, a helpful AI assistant for CompuClass — a computer hardware and software learning platform for students.
 You help students understand PC components (CPU, GPU, RAM, storage, motherboard, PSU), troubleshoot hardware issues, prepare for quizzes, and learn about computer science concepts.
-Keep responses clear, concise, and educational. Use simple language suitable for students.`;
+Keep responses clear, concise, and educational. Use simple language suitable for students.
+Always respond in the same language the user writes in.${
+  context ? `\nThe user is currently viewing: ${context}. Use this as context if relevant.` : ''
+}`;
 
-      const contents = [
-        { role: 'user', parts: [{ text: systemPrompt }] },
-        { role: 'model', parts: [{ text: 'Understood! I am CompuBot, your CompuClass AI assistant. How can I help you today?' }] },
-        ...messages.map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text }],
-        })),
-      ];
+    const mappedMessages = messages.map((m, i) => {
+      const isLast = i === messages.length - 1;
+      const parts = [];
+      if (m.text) parts.push({ text: m.text });
+      if (isLast && imageBase64) parts.push({ inline_data: { mime_type: 'image/jpeg', data: imageBase64 } });
+      return { role: m.role === 'user' ? 'user' : 'model', parts };
+    });
 
-      const url = `${GEMINI_BASE_URL}/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents }),
-      });
+    const contents = [
+      { role: 'user', parts: [{ text: systemPrompt }] },
+      { role: 'model', parts: [{ text: 'Understood! I am CompuBot, your CompuClass AI assistant. How can I help you today?' }] },
+      ...mappedMessages,
+    ];
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error('Gemini API error body:', errorBody);
-        throw new Error(`Gemini API error: ${response.status} - ${errorBody}`);
+    const url = `${GEMINI_BASE_URL}/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents }),
+        });
+
+        if (response.status === 503 && attempt < retries) {
+          await new Promise(res => setTimeout(res, attempt * 2000));
+          continue;
+        }
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          const apiError = new Error(`Gemini API error: ${response.status} - ${errorBody}`);
+          // A rejected request (bad key, quota, malformed body) returns the same
+          // answer however often it is repeated, so it must not be retried.
+          apiError.noRetry = true;
+          throw apiError;
+        }
+
+        const data = await response.json();
+        return data.candidates[0].content.parts[0].text;
+      } catch (error) {
+        // Only transport-level failures are worth another attempt.
+        if (error.noRetry || attempt === retries) throw error;
+        await new Promise(res => setTimeout(res, attempt * 2000));
       }
-
-      const data = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    } catch (error) {
-      console.error('Chat error full:', error.message);
-      throw error;
     }
   },
 
