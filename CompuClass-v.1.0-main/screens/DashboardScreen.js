@@ -412,7 +412,7 @@ export default function DashboardScreen({ navigation }) {
       <Text style={styles.sectionTitle}>Play & Learn</Text>
 
       {/* CompuRunner card */}
-      <AnimatedCard onPress={() => navigation.navigate("Game")} style={{ marginBottom: 16 }}>
+      <AnimatedCard onPress={() => navigation.navigate("GameRunnerLobby")} style={{ marginBottom: 16 }}>
         <LinearGradient
           colors={["#7C3AED", "#4F46E5"]}
           style={styles.gameCard}
